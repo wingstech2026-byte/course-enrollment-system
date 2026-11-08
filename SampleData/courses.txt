@@ -1,0 +1,4 @@
+CS101|Introduction to Programming|5
+CS201|Data Structures|5
+MA101|Calculus I|30
+EN101|Academic Writing|4

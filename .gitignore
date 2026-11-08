@@ -1,0 +1,20 @@
+# Visual Studio / MSBuild output
+x64/
+Debug/
+Release/
+.vs/
+*.obj
+*.pdb
+*.ilk
+*.res
+*.tlog
+*.user
+*.aps
+# Runtime data written next to the exe (the originals live in SampleData/)
+/students.txt
+/courses.txt
+/enrollments.txt
+
+# MSBuild intermediate folder and release archives
+Enrollme.*/
+*.zip

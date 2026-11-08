@@ -1,0 +1,5 @@
+CS101|Intro|1
+CS101|Duplicate course|5
+MA101|Calculus|0
+EN101|Writing|abc
+PH101|Physics|-4
