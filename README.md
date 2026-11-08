@@ -1,5 +1,7 @@
 # Course Enrollment Management System
 
+Author: **Hawa Fatorma** (ID 202624080205)
+
 A Win32 desktop application (C++17, Visual Studio 2022, no third-party libraries) for managing students, courses and enrollments.
 
 ## 1. Files
