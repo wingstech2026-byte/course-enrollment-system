@@ -1,19 +1,26 @@
 /*
  * app.js - user interface of the browser edition.
- * All user-supplied text is inserted with textContent / createTextNode (never innerHTML).
+ * All user-supplied text is inserted with textContent / text nodes (never innerHTML).
  */
 (function () {
   'use strict';
 
-  const { EnrollmentSystem, statusOf } = window.EMSLogic;
+  const { EnrollmentSystem, MAX_CAPACITY, statusOf } = window.EMSLogic;
   const storage = window.EMSStorage;
 
   const TITLE = 'Course Enrollment Management System';
+  const SEAT_MAP_LIMIT = 60; // courses up to this many seats get a seat map
+  const SEGMENTED_METER_LIMIT = 12; // up to this many seats the table meter shows one block per seat
   const $ = (selector) => document.querySelector(selector);
   const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
   const system = new EnrollmentSystem();
   let lastAction = 'Ready.';
+  let lastKind = 'info'; // 'ok' | 'error' | 'info'
+  let courseFilter = 'all'; // 'all' | 'open' | 'almost' | 'full'
+  let animateSeats = false;
+
+  const STATUS_LABEL = { open: 'Open', almost: 'Almost full', full: 'Full' };
 
   /** Tiny DOM builder: h('tr', { class: 'x', onclick: fn }, child, 'text'). */
   function h(tag, props, ...children) {
@@ -28,22 +35,81 @@
     return el;
   }
 
+  /** <svg><use href="#i-name"/></svg> from the sprite in index.html. */
+  function icon(name) {
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('class', 'i');
+    svg.setAttribute('aria-hidden', 'true');
+    const use = document.createElementNS(NS, 'use');
+    use.setAttribute('href', `#i-${name}`);
+    svg.append(use);
+    return svg;
+  }
+
   const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+  // ===========================================================================
+  // Small visual building blocks
+  // ===========================================================================
+
+  /** First letter of the first and last word ("Alice Johnson" -> "AJ"). */
+  function initials(name) {
+    const words = name.trim().split(/\s+/).filter(Boolean);
+    if (words.length === 0) return '?';
+    const first = [...words[0]][0];
+    const last = words.length > 1 ? [...words[words.length - 1]][0] : '';
+    return (first + last).toUpperCase();
+  }
+
+  /** A stable hue (0-359) derived from an ID, so a person always gets the same color. */
+  function hueOf(id) {
+    let n = 0;
+    for (const ch of id) n = (n * 31 + ch.codePointAt(0)) % 100003;
+    // Neighbouring IDs (S001, S002 ...) differ by 1, so step by the golden angle to spread the hues apart.
+    return Math.round((n * 137.508) % 360);
+  }
+
+  function avatar(name, id, large) {
+    const el = h('span', { class: `avatar${large ? ' lg' : ''}`, 'aria-hidden': 'true' }, initials(name));
+    el.style.setProperty('--h', String(hueOf(id)));
+    return el;
+  }
+
+  const pill = (status) => h('span', { class: `pill ${status}` }, STATUS_LABEL[status]);
+
+  /** Seat meter for the courses table: one block per seat for small courses, a bar otherwise. */
+  function seatMeter(enrolled, capacity, status) {
+    const label = `${enrolled} of ${capacity} seats taken`;
+    if (capacity <= SEGMENTED_METER_LIMIT) {
+      const wrap = h('span', { class: `segmeter ${status}`, role: 'img', 'aria-label': label });
+      for (let i = 0; i < capacity; i++) wrap.append(h('i', { class: i < enrolled ? 'on' : '' }));
+      return wrap;
+    }
+    const percent = Math.min(100, (enrolled / capacity) * 100);
+    const bar = h('span', { class: `meter ${status}`, role: 'img', 'aria-label': label }, h('i'));
+    bar.firstElementChild.style.width = `${percent}%`;
+    return bar;
+  }
 
   // ===========================================================================
   // Sortable tables
   // ===========================================================================
 
-  /** Creates the header of a table and returns its state object. */
+  /**
+   * columns: [{ title, render?(row) }]. A row is { key, cells: string[], tag?, data? };
+   * `cells` are the sort keys and the default text, `render` may draw something richer.
+   */
   function makeTable(selector, columns, options = {}) {
     const table = {
       el: $(selector), columns, rows: [], sort: { col: 0, asc: true },
       selectable: !!options.selectable, selectedKey: null, onSelect: options.onSelect || (() => {}),
-      emptyText: options.emptyText || 'Nothing to show.',
+      empty: options.empty || (() => 'Nothing to show.'),
     };
     const headRow = h('tr');
-    columns.forEach((title, index) => {
-      const button = h('button', { type: 'button', title: `Sort by ${title}` }, title, h('span', { class: 'arrow', 'aria-hidden': 'true' }, '▲'));
+    columns.forEach((column, index) => {
+      const button = h('button', { type: 'button', title: `Sort by ${column.title.toLowerCase()}` },
+        column.title, h('span', { class: 'arrow', 'aria-hidden': 'true' }, '▲'));
       button.addEventListener('click', () => {
         if (table.sort.col === index) table.sort.asc = !table.sort.asc;
         else table.sort = { col: index, asc: true };
@@ -68,15 +134,16 @@
     const body = table.el.tBodies[0];
     body.replaceChildren();
     if (table.rows.length === 0) {
-      body.append(h('tr', { class: 'empty' }, h('td', { colspan: table.columns.length }, table.emptyText)));
+      body.append(h('tr', { class: 'empty' }, h('td', { colspan: table.columns.length }, table.empty())));
       return;
     }
     for (const row of table.rows) {
-      const tr = h('tr', { class: row.tag ? `row-${row.tag}` : '' }, row.cells.map((text) => h('td', {}, text)));
+      const cells = table.columns.map((column, index) => h('td', {}, column.render ? column.render(row) : row.cells[index]));
+      const tr = h('tr', { class: row.tag ? `row-${row.tag}` : '' }, cells);
+      tr.dataset.key = row.key;
       if (table.selectable) {
-        const selected = row.key === table.selectedKey;
         tr.tabIndex = 0;
-        tr.setAttribute('aria-selected', String(selected));
+        tr.setAttribute('aria-selected', String(row.key === table.selectedKey));
         const choose = () => { table.selectedKey = row.key; paint(table); table.onSelect(row.key); focusRow(table, row.key); };
         tr.addEventListener('click', choose);
         tr.addEventListener('keydown', (event) => {
@@ -85,7 +152,6 @@
           else if (event.key === 'ArrowUp' && tr.previousElementSibling) tr.previousElementSibling.focus();
         });
       }
-      tr.dataset.key = row.key;
       body.append(tr);
     }
   }
@@ -102,12 +168,59 @@
     paint(table);
   }
 
-  const tblStudents = makeTable('#tbl-students', ['Student ID', 'Name', 'Courses Taken'], { emptyText: 'No students match.' });
-  const tblCourses = makeTable('#tbl-courses', ['Course ID', 'Name', 'Capacity', 'Enrolled', 'Remaining', 'Status'], { emptyText: 'No courses match.' });
-  const tblStudentCourses = makeTable('#tbl-student-courses', ['Course ID', 'Course Name', 'Seats'], {
-    selectable: true, emptyText: 'Choose a student to see their courses.', onSelect: () => updateButtons(),
+  const idCell = (row) => h('span', { class: 'id' }, row.cells[0]);
+  const personCell = (row) => h('div', { class: 'person-cell' }, avatar(row.cells[1], row.key), h('span', {}, row.cells[1]));
+
+  /** Empty-state block: a plain statement and, when it helps, the action that fixes it. */
+  const emptyState = (title, detail, actionLabel, action) =>
+    h('div', {}, h('strong', {}, title), detail, actionLabel ? h('div', {}, h('button', { type: 'button', class: 'btn primary', onclick: action }, actionLabel)) : '');
+
+  const tblStudents = makeTable('#tbl-students', [
+    { title: 'Student ID', render: idCell },
+    { title: 'Name', render: personCell },
+    {
+      title: 'Courses Taken',
+      render: (row) => {
+        const ids = row.data.courses;
+        return h('div', { class: 'taken' }, h('span', { class: 'num' }, row.cells[2]),
+          ids.slice(0, 3).map((id) => h('span', { class: 'chip' }, id)),
+          ids.length > 3 ? h('span', { class: 'chip' }, `+${ids.length - 3}`) : '');
+      },
+    },
+  ], {
+    empty: () => system.students.length === 0
+      ? emptyState('No students yet', 'Add the first student to start enrolling.', 'Add student', () => openStudentDialog())
+      : `No student matches “${$('#stu-search').value.trim()}”.`,
   });
-  const tblCourseStudents = makeTable('#tbl-course-students', ['Student ID', 'Student Name'], { emptyText: 'Choose a course to see its students.' });
+
+  const tblCourses = makeTable('#tbl-courses', [
+    { title: 'Course ID', render: idCell },
+    { title: 'Name' },
+    { title: 'Capacity' },
+    { title: 'Enrolled', render: (row) => h('div', { class: 'enrolled' }, h('span', { class: 'num' }, row.cells[3]), seatMeter(row.data.enrolled, row.data.capacity, row.tag)) },
+    { title: 'Remaining' },
+    { title: 'Status', render: (row) => pill(row.tag) },
+  ], {
+    empty: () => system.courses.length === 0
+      ? emptyState('No courses yet', 'Add a course and set how many students it can hold.', 'Add course', () => openCourseDialog())
+      : 'No course matches the current search and filter.',
+  });
+
+  const tblStudentCourses = makeTable('#tbl-student-courses', [
+    { title: 'Course ID', render: idCell },
+    { title: 'Course Name' },
+    { title: 'Seats', render: (row) => h('div', { class: 'enrolled' }, h('span', { class: 'num' }, row.cells[2]), seatMeter(row.data.enrolled, row.data.capacity, row.tag)) },
+  ], {
+    selectable: true, onSelect: () => updateButtons(),
+    empty: () => $('#enr-student').value ? 'Not enrolled in any course yet. Choose a course below and press Enroll.' : 'Choose a student to see their courses.',
+  });
+
+  const tblCourseStudents = makeTable('#tbl-course-students', [
+    { title: 'Student ID', render: idCell },
+    { title: 'Student Name', render: personCell },
+  ], {
+    empty: () => $('#enr-view-course').value ? 'No one is enrolled in this course yet.' : 'Choose a course to see its students.',
+  });
 
   // ===========================================================================
   // Refreshing the display
@@ -117,24 +230,43 @@
 
   function refreshStudents() {
     const filter = $('#stu-search').value.trim().toLowerCase();
-    setRows(tblStudents, system.students
+    const rows = system.students
       .filter((s) => matches(filter, s.id, s.name))
-      .map((s) => ({ key: s.id, cells: [s.id, s.name, String(system.courseCountOfStudent(s.id))] })));
+      .map((s) => {
+        const courses = system.coursesOfStudent(s.id).map((c) => c.id);
+        return { key: s.id, cells: [s.id, s.name, String(courses.length)], data: { courses } };
+      });
+    setRows(tblStudents, rows);
+    $('#stu-count').textContent = filter
+      ? `Showing ${rows.length} of ${plural(system.students.length, 'student', 'students')}`
+      : plural(system.students.length, 'student', 'students');
   }
 
   function refreshCourses() {
     const filter = $('#crs-search').value.trim().toLowerCase();
-    const label = { open: 'Open', almost: 'Almost full', full: 'Full' };
-    setRows(tblCourses, system.courses
-      .filter((c) => matches(filter, c.id, c.name))
-      .map((c) => {
-        const enrolled = system.enrolledCount(c.id);
-        const status = statusOf(enrolled, c.capacity);
-        return {
-          key: c.id, tag: status,
-          cells: [c.id, c.name, String(c.capacity), String(enrolled), String(Math.max(0, c.capacity - enrolled)), label[status]],
-        };
-      }));
+    const all = system.courses.map((c) => {
+      const enrolled = system.enrolledCount(c.id);
+      return { course: c, enrolled, status: statusOf(enrolled, c.capacity) };
+    });
+    const searched = all.filter((x) => matches(filter, x.course.id, x.course.name));
+
+    // Status filter buttons with counts (counts respect the search box).
+    const counts = { all: searched.length, open: 0, almost: 0, full: 0 };
+    searched.forEach((x) => { counts[x.status]++; });
+    $('#crs-filter').replaceChildren(...['all', 'open', 'almost', 'full'].map((name) =>
+      h('button', {
+        type: 'button', 'aria-pressed': String(courseFilter === name),
+        onclick: () => { courseFilter = name; refreshCourses(); },
+      }, name === 'all' ? 'All' : STATUS_LABEL[name], h('span', { class: 'n' }, String(counts[name])))));
+
+    const shown = searched.filter((x) => courseFilter === 'all' || x.status === courseFilter);
+    setRows(tblCourses, shown.map(({ course: c, enrolled, status }) => ({
+      key: c.id, tag: status, data: { enrolled, capacity: c.capacity },
+      cells: [c.id, c.name, String(c.capacity), String(enrolled), String(Math.max(0, c.capacity - enrolled)), STATUS_LABEL[status]],
+    })));
+    $('#crs-count').textContent = shown.length === system.courses.length
+      ? plural(system.courses.length, 'course', 'courses')
+      : `Showing ${shown.length} of ${plural(system.courses.length, 'course', 'courses')}`;
   }
 
   /** Refills a <select>, keeping the previous choice when it still exists. */
@@ -152,18 +284,35 @@
       const left = system.remainingPlaces(c.id);
       return { value: c.id, label: `${c.id} - ${c.name}  (${left > 0 ? `${left} left` : 'full'})` };
     });
-    fillSelect($('#enr-student'), '— choose a student —', students.map((s) => ({ value: s.id, label: `${s.id} - ${s.name}` })));
-    fillSelect($('#enr-course'), '— choose a course —', courseOptions);
-    fillSelect($('#enr-view-course'), '— choose a course —', courseOptions);
+    fillSelect($('#enr-student'), 'Choose a student', students.map((s) => ({ value: s.id, label: `${s.id} - ${s.name}` })));
+    fillSelect($('#enr-course'), 'Choose a course', courseOptions);
+    fillSelect($('#enr-view-course'), 'Choose a course', courseOptions);
   }
 
   function refreshStudentCourses() {
     const studentId = $('#enr-student').value;
-    setRows(tblStudentCourses, studentId
-      ? system.coursesOfStudent(studentId).map((c) => ({
-          key: c.id, cells: [c.id, c.name, `${system.enrolledCount(c.id)} / ${c.capacity}`],
-        }))
-      : []);
+    const student = studentId ? system.findStudent(studentId) : null;
+    const card = $('#student-card');
+
+    if (!student) {
+      card.hidden = true;
+      setRows(tblStudentCourses, []);
+      return;
+    }
+    const courses = system.coursesOfStudent(studentId);
+    card.replaceChildren(
+      avatar(student.name, student.id, true),
+      h('div', { class: 'who' }, h('strong', {}, student.name), h('span', {}, student.id)),
+      h('span', { class: 'pill' }, plural(courses.length, 'course', 'courses')));
+    card.hidden = false;
+
+    setRows(tblStudentCourses, courses.map((c) => {
+      const enrolled = system.enrolledCount(c.id);
+      return {
+        key: c.id, tag: statusOf(enrolled, c.capacity), data: { enrolled, capacity: c.capacity },
+        cells: [c.id, c.name, `${enrolled} / ${c.capacity}`],
+      };
+    }));
   }
 
   function refreshCourseStudents() {
@@ -171,25 +320,58 @@
     const course = courseId ? system.findCourse(courseId) : null;
     const summary = $('#enr-summary');
     const bar = $('#enr-bar');
+    const seatmap = $('#seatmap');
+    const head = $('#course-head');
+    const legend = $('#seat-legend');
 
     if (!course) {
+      head.hidden = true;
+      seatmap.hidden = true;
+      legend.hidden = true;
+      bar.hidden = true;
       summary.textContent = 'Select a course to see its enrolled students.';
-      bar.className = 'bar';
-      bar.firstElementChild.style.width = '0%';
-      bar.setAttribute('aria-valuenow', '0');
       setRows(tblCourseStudents, []);
       return;
     }
-    const enrolled = system.enrolledCount(courseId);
+
+    const roster = system.studentsInCourse(courseId);
+    const enrolled = roster.length;
     const remaining = system.remainingPlaces(courseId);
+    const status = statusOf(enrolled, course.capacity);
+
+    head.replaceChildren(
+      h('div', { class: 'who' }, h('strong', {}, course.name), h('span', { class: 'sub' }, course.id)),
+      pill(status));
+    head.hidden = false;
     summary.textContent = `Enrolled ${enrolled} / ${course.capacity} — ${plural(remaining, 'place', 'places')} remaining`;
 
-    const percent = Math.min(100, Math.round((enrolled / course.capacity) * 100));
-    const status = statusOf(enrolled, course.capacity);
-    bar.className = `bar ${status === 'open' ? '' : status}`.trim();
-    bar.firstElementChild.style.width = `${percent}%`;
-    bar.setAttribute('aria-valuenow', String(percent));
-    setRows(tblCourseStudents, system.studentsInCourse(courseId).map((s) => ({ key: s.id, cells: [s.id, s.name] })));
+    if (course.capacity <= SEAT_MAP_LIMIT) {
+      bar.hidden = true;
+      seatmap.className = `seatmap ${status}${animateSeats ? ' animate' : ''}`;
+      seatmap.setAttribute('aria-label', `Seat map: ${enrolled} of ${course.capacity} seats taken`);
+      seatmap.replaceChildren(...Array.from({ length: course.capacity }, (_, i) => {
+        const student = roster[i];
+        const seat = student
+          ? h('span', { class: 'seat on', title: `${student.id} ${student.name}`, 'aria-hidden': 'true' }, initials(student.name))
+          : h('span', { class: 'seat off', title: 'Open seat', 'aria-hidden': 'true' });
+        seat.style.setProperty('--i', String(i));
+        return seat;
+      }));
+      seatmap.hidden = false;
+      legend.className = `seat-legend ${status}`;
+      legend.hidden = false;
+    } else {
+      // Too many seats to draw one by one: fall back to a bar.
+      seatmap.hidden = true;
+      legend.hidden = true;
+      const percent = Math.min(100, Math.round((enrolled / course.capacity) * 100));
+      bar.className = `meter ${status}`;
+      bar.firstElementChild.style.width = `${percent}%`;
+      bar.setAttribute('aria-valuenow', String(percent));
+      bar.hidden = false;
+    }
+    animateSeats = false;
+    setRows(tblCourseStudents, roster.map((s) => ({ key: s.id, cells: [s.id, s.name] })));
   }
 
   function updateButtons() {
@@ -198,11 +380,24 @@
     $('#btn-withdraw').disabled = !(studentId && tblStudentCourses.selectedKey !== null);
   }
 
+  function updateSidebar() {
+    $('#nav-students').textContent = String(system.students.length);
+    $('#nav-courses').textContent = String(system.courses.length);
+    $('#nav-enrollments').textContent = String(system.enrollments.length);
+
+    const seats = system.courses.reduce((sum, c) => sum + c.capacity, 0);
+    const taken = system.enrollments.length;
+    $('#usage-text').textContent = seats === 0 ? 'No seats defined yet' : `${taken} of ${plural(seats, 'seat', 'seats')} taken`;
+    $('#usage-bar').style.width = seats === 0 ? '0%' : `${Math.min(100, (taken / seats) * 100)}%`;
+  }
+
   function updateStatusBar() {
-    $('#st-students').textContent = `Students: ${system.students.length}`;
-    $('#st-courses').textContent = `Courses: ${system.courses.length}`;
-    $('#st-enrollments').textContent = `Enrollments: ${system.enrollments.length}`;
-    $('#st-last').textContent = lastAction;
+    $('#st-students').textContent = plural(system.students.length, 'student', 'students');
+    $('#st-courses').textContent = plural(system.courses.length, 'course', 'courses');
+    $('#st-enrollments').textContent = plural(system.enrollments.length, 'enrollment', 'enrollments');
+    const last = $('#st-last');
+    last.textContent = lastAction;
+    last.dataset.kind = lastKind;
   }
 
   function updateTitle() {
@@ -210,8 +405,9 @@
     $('#unsaved').hidden = !system.modified;
   }
 
-  function setStatus(text) {
+  function setStatus(text, kind = 'info') {
     lastAction = text;
+    lastKind = kind;
     updateStatusBar();
   }
 
@@ -223,6 +419,7 @@
     refreshStudentCourses();
     refreshCourseStudents();
     updateButtons();
+    updateSidebar();
     updateStatusBar();
     updateTitle();
   }
@@ -231,6 +428,8 @@
   // Message / confirmation dialog (the browser version of MessageBox)
   // ===========================================================================
 
+  const MESSAGE_ICON = { error: 'error', warning: 'warning', question: 'help', info: 'info' };
+
   /**
    * Shows a modal message. Resolves with the `value` of the chosen button, or 'cancel'
    * when dismissed with Esc.
@@ -238,9 +437,9 @@
   function showMessage({ title, text, kind = 'info', buttons = [{ label: 'OK', value: 'ok', primary: true }], focus = 0 }) {
     const dialog = $('#dlg-message');
     $('#msg-title').textContent = title;
-    const body = $('#msg-text');
-    body.textContent = text;
-    body.className = `msg-text ${kind}`;
+    $('#msg-text').textContent = text;
+    dialog.querySelector('.msg').className = `msg ${kind}`;
+    $('#msg-icon').replaceChildren(icon(MESSAGE_ICON[kind]));
 
     const row = $('#msg-buttons');
     row.replaceChildren();
@@ -259,22 +458,24 @@
   const showError = (title, text) => showMessage({ title, text, kind: 'error' });
   const confirmYesNo = async (title, text) =>
     (await showMessage({
-      title, text,
+      title, text, kind: 'question',
       buttons: [{ label: 'Yes', value: 'yes', primary: true }, { label: 'No', value: 'no' }],
       focus: 1, // default answer is "No"
     })) === 'yes';
 
   // ===========================================================================
-  // Add Student / Add Course dialogs (inline validation, dialog stays open on errors)
+  // Add student / Add course dialogs (inline validation, dialog stays open on errors)
   // ===========================================================================
 
+  /** Wires a dialog and returns the function that opens it. */
   function wireAddDialog({ dialog, form, errorEl, fields, openButton, submit }) {
-    openButton.addEventListener('click', () => {
+    const open = () => {
       form.reset();
       errorEl.textContent = '';
       dialog.showModal();
       fields.id.focus();
-    });
+    };
+    openButton.addEventListener('click', open);
     form.querySelector('[data-cancel]').addEventListener('click', () => dialog.close('cancel'));
     form.addEventListener('submit', (event) => {
       event.preventDefault();
@@ -288,17 +489,18 @@
       }
       dialog.close('ok');
       refreshAll();
-      setStatus(result.message);
+      setStatus(result.message, 'ok');
     });
+    return open;
   }
 
-  wireAddDialog({
+  const openStudentDialog = wireAddDialog({
     dialog: $('#dlg-student'), form: $('#form-student'), errorEl: $('#stu-error'),
     fields: { id: $('#stu-id'), name: $('#stu-name') }, openButton: $('#stu-add'),
     submit: () => system.addStudent($('#stu-id').value, $('#stu-name').value),
   });
 
-  wireAddDialog({
+  const openCourseDialog = wireAddDialog({
     dialog: $('#dlg-course'), form: $('#form-course'), errorEl: $('#crs-error'),
     fields: { id: $('#crs-id'), name: $('#crs-name'), capacity: $('#crs-cap') }, openButton: $('#crs-add'),
     submit: () => {
@@ -309,6 +511,14 @@
     },
   });
 
+  document.querySelectorAll('#form-course [data-step]').forEach((button) =>
+    button.addEventListener('click', () => {
+      const input = $('#crs-cap');
+      const current = parseInt(input.value, 10);
+      const base = Number.isFinite(current) ? current : 30;
+      input.value = String(Math.min(MAX_CAPACITY, Math.max(1, base + Number(button.dataset.step))));
+    }));
+
   // ===========================================================================
   // Enroll / withdraw
   // ===========================================================================
@@ -316,12 +526,12 @@
   async function onEnroll() {
     const result = system.enroll($('#enr-student').value, $('#enr-course').value);
     if (!result.ok) {
-      setStatus('Enrollment rejected.');
+      setStatus('Enrollment rejected.', 'error');
       await showError('Cannot enroll', result.message);
       return;
     }
     refreshAll();
-    setStatus(result.message);
+    setStatus(result.message, 'ok');
   }
 
   async function onWithdraw() {
@@ -338,18 +548,18 @@
 
     const result = system.withdraw(studentId, courseId);
     if (!result.ok) {
-      setStatus('Withdrawal rejected.');
+      setStatus('Withdrawal rejected.', 'error');
       await showError('Cannot withdraw', result.message);
       return;
     }
     refreshAll();
-    setStatus(result.message);
+    setStatus(result.message, 'ok');
     $('#enr-student').focus(); // the Withdraw button just became disabled
   }
 
   $('#enr-student').addEventListener('change', () => { tblStudentCourses.selectedKey = null; refreshStudentCourses(); updateButtons(); });
   $('#enr-course').addEventListener('change', updateButtons);
-  $('#enr-view-course').addEventListener('change', refreshCourseStudents);
+  $('#enr-view-course').addEventListener('change', () => { animateSeats = true; refreshCourseStudents(); });
   $('#btn-enroll').addEventListener('click', onEnroll);
   $('#btn-withdraw').addEventListener('click', onWithdraw);
   $('#stu-search').addEventListener('input', refreshStudents);
@@ -362,14 +572,14 @@
   function saveData() {
     const result = storage.saveToBrowser(system);
     if (!result.ok) {
-      setStatus('Save failed.');
+      setStatus('Save failed.', 'error');
       showError('Cannot save', result.message);
       return false;
     }
     system.markSaved();
     updateTitle();
     setStatus(`Saved ${plural(system.students.length, 'student', 'students')}, ${plural(system.courses.length, 'course', 'courses')}, ` +
-      `${plural(system.enrollments.length, 'enrollment', 'enrollments')} in this browser.`);
+      `${plural(system.enrollments.length, 'enrollment', 'enrollments')} in this browser.`, 'ok');
     return true;
   }
 
@@ -381,7 +591,7 @@
     let status = `${origin}: ${plural(report.studentsLoaded, 'student', 'students')}, ` +
       `${plural(report.coursesLoaded, 'course', 'courses')}, ${plural(report.enrollmentsLoaded, 'enrollment', 'enrollments')}.`;
     if (report.warnings.length) status += ` Problems found: ${report.warnings.length}.`;
-    setStatus(status);
+    setStatus(status, report.warnings.length ? 'error' : 'ok');
     if (report.warnings.length)
       await showMessage({ title: 'Some data was skipped', text: storage.summarize(report, 15), kind: 'warning' });
   }
@@ -399,7 +609,7 @@
     const files = storage.serialize(system);
     ['students', 'courses', 'enrollments'].forEach((name, i) =>
       setTimeout(() => download(`${name}.txt`, files[name]), i * 250));
-    setStatus('Exported students.txt, courses.txt and enrollments.txt (check your Downloads folder).');
+    setStatus('Exported students.txt, courses.txt and enrollments.txt (check your Downloads folder).', 'ok');
   }
 
   async function importFiles(fileList) {
@@ -410,14 +620,13 @@
         if (name.includes(kind) && name.endsWith('.txt')) files[kind] = await file.text();
       }
     }
-    const found = Object.keys(files);
-    if (found.length === 0) {
+    if (Object.keys(files).length === 0) {
       await showError('Nothing to import', 'Choose students.txt, courses.txt and/or enrollments.txt.');
       return;
     }
     const missing = ['students', 'courses', 'enrollments'].filter((k) => !(k in files)).map((k) => `${k}.txt`);
     const note = missing.length ? `\n\nNot selected (treated as empty): ${missing.join(', ')}.` : '';
-    if (!(await confirmYesNo('Import files', `Replace ALL current data with the selected files?${note}`))) return;
+    if (!(await confirmYesNo('Import files', `Replace all current data with the selected files?${note}`))) return;
     await applyFiles(files, { modified: true, origin: 'Imported' });
   }
 
@@ -430,7 +639,7 @@
     if (chosen.length) importFiles(chosen);
   });
   $('#btn-sample').addEventListener('click', async () => {
-    if (await confirmYesNo('Sample data', 'Replace ALL current data with the demo data (6 students, 4 courses, 12 enrollments)?'))
+    if (await confirmYesNo('Load sample data', 'Replace all current data with the demo data (6 students, 4 courses, 12 enrollments)?'))
       await applyFiles(storage.SAMPLE, { modified: true, origin: 'Sample data' });
   });
   $('#btn-about').addEventListener('click', () => $('#dlg-about').showModal());
@@ -447,8 +656,15 @@
     if (system.modified) { event.preventDefault(); event.returnValue = ''; }
   });
 
+  // On phones the file actions fold away behind a "Data and files" toggle.
+  const dataMenu = $('#datamenu');
+  const narrow = window.matchMedia('(max-width: 900px)');
+  const syncDataMenu = () => { dataMenu.open = !narrow.matches; };
+  syncDataMenu();
+  narrow.addEventListener('change', syncDataMenu);
+
   // ===========================================================================
-  // Tabs
+  // Navigation tabs
   // ===========================================================================
 
   const TAB_NAMES = ['students', 'courses', 'enrollment'];
@@ -462,13 +678,15 @@
       $(`#panel-${tabName}`).hidden = !selected;
       if (selected && moveFocus) tab.focus();
     }
+    if (name === 'enrollment') { animateSeats = true; refreshCourseStudents(); }
   }
 
   TAB_NAMES.forEach((name, index) => {
     const tab = $(`#tab-${name}`);
     tab.addEventListener('click', () => selectTab(name, false));
     tab.addEventListener('keydown', (event) => {
-      const step = { ArrowRight: 1, ArrowLeft: -1 }[event.key];
+      const vertical = !narrow.matches;
+      const step = { [vertical ? 'ArrowDown' : 'ArrowRight']: 1, [vertical ? 'ArrowUp' : 'ArrowLeft']: -1 }[event.key];
       let target = null;
       if (step) target = TAB_NAMES[(index + step + TAB_NAMES.length) % TAB_NAMES.length];
       else if (event.key === 'Home') target = TAB_NAMES[0];
@@ -486,6 +704,6 @@
     applyFiles(saved, { modified: false, origin: 'Loaded' });
   } else {
     applyFiles(storage.SAMPLE, { modified: false, origin: 'Welcome! Demo data loaded' })
-      .then(() => setStatus(lastAction + ' Press Save to keep your changes in this browser.'));
+      .then(() => setStatus(`${lastAction} Press Save changes to keep your edits in this browser.`, 'info'));
   }
 })();

@@ -5,128 +5,226 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Course Enrollment Management System</title>
   <meta name="description" content="Manage students, courses and enrollments: capacity limits, duplicate checks, search, sorting and file import/export.">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23285fc9'/%3E%3Ctext x='32' y='46' font-family='Segoe UI,Arial' font-size='40' font-weight='700' text-anchor='middle' fill='white'%3EE%3C/text%3E%3C/svg%3E">
+  <meta name="theme-color" content="#0F1A2E">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230F1A2E'/%3E%3Crect x='13' y='13' width='16' height='16' rx='5' fill='%23ffffff' fill-opacity='.35'/%3E%3Crect x='35' y='13' width='16' height='16' rx='5' fill='%23D8A64B'/%3E%3Crect x='13' y='35' width='16' height='16' rx='5' fill='%23ffffff' fill-opacity='.35'/%3E%3Crect x='35' y='35' width='16' height='16' rx='5' fill='%23ffffff' fill-opacity='.35'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400..600&family=Public+Sans:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header class="appbar">
-    <div class="brand">
-      <span class="logo" aria-hidden="true">E</span>
-      <h1>Course Enrollment Management System</h1>
-      <span id="unsaved" class="badge" hidden>Unsaved changes</span>
-    </div>
-    <div class="actions">
-      <button id="btn-save" class="btn primary" title="Save to this browser (Ctrl+S)">Save <kbd>Ctrl+S</kbd></button>
-      <button id="btn-import" class="btn" title="Load students.txt, courses.txt and enrollments.txt">Import files&hellip;</button>
-      <button id="btn-export" class="btn" title="Download students.txt, courses.txt and enrollments.txt">Export files</button>
-      <button id="btn-sample" class="btn" title="Replace all data with the demo data">Sample data</button>
-      <button id="btn-about" class="btn" title="About">About</button>
-      <input id="file-input" type="file" accept=".txt,text/plain" multiple hidden>
-    </div>
-  </header>
+  <!-- Icon sprite (stroke icons, drawn on a 24px grid) -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <defs>
+      <symbol id="i-students" viewBox="0 0 24 24"><path d="M16 19v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 17.5V19"/><circle cx="10" cy="8" r="3.2"/><path d="M20 19v-1.2a3 3 0 0 0-2.2-2.9M15.8 5.2a3.2 3.2 0 0 1 0 5.6"/></symbol>
+      <symbol id="i-courses" viewBox="0 0 24 24"><path d="M3 5.5c2.5-1 5.5-1 9 1 3.5-2 6.5-2 9-1V18.5c-2.5-1-5.5-1-9 1-3.5-2-6.5-2-9-1z"/><path d="M12 6.5v13"/></symbol>
+      <symbol id="i-enrollment" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3.5"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></symbol>
+      <symbol id="i-save" viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/></symbol>
+      <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V5M7.5 9.5L12 5l4.5 4.5M5 19h14"/></symbol>
+      <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 5v11M7.5 11.5L12 16l4.5-4.5M5 19h14"/></symbol>
+      <symbol id="i-sample" viewBox="0 0 24 24"><ellipse cx="12" cy="6.5" rx="7" ry="2.8"/><path d="M5 6.5v11c0 1.5 3.1 2.8 7 2.8s7-1.3 7-2.8v-11M5 12c0 1.5 3.1 2.8 7 2.8s7-1.3 7-2.8"/></symbol>
+      <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8v.01"/></symbol>
+      <symbol id="i-error" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M9 9l6 6M15 9l-6 6"/></symbol>
+      <symbol id="i-warning" viewBox="0 0 24 24"><path d="M12 4l9 15.5H3z"/><path d="M12 10v4.5M12 17v.01"/></symbol>
+      <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M9.7 9.5a2.4 2.4 0 1 1 3.4 2.2c-.8.4-1.1.9-1.1 1.8M12 16.5v.01"/></symbol>
+      <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+    </defs>
+  </svg>
 
-  <main>
-    <div class="tabs" role="tablist" aria-label="Sections">
-      <button class="tab" role="tab" id="tab-students" aria-controls="panel-students" aria-selected="true">Students</button>
-      <button class="tab" role="tab" id="tab-courses" aria-controls="panel-courses" aria-selected="false" tabindex="-1">Courses</button>
-      <button class="tab" role="tab" id="tab-enrollment" aria-controls="panel-enrollment" aria-selected="false" tabindex="-1">Enrollment</button>
-    </div>
-
-    <!-- ================= Students ================= -->
-    <section class="panel" role="tabpanel" id="panel-students" aria-labelledby="tab-students">
-      <div class="toolbar">
-        <label class="search"><span>Search</span>
-          <input id="stu-search" type="search" placeholder="Type to filter by ID or name&hellip;" autocomplete="off">
-        </label>
-        <button id="stu-add" class="btn primary">Add Student&hellip;</button>
+  <div class="shell">
+    <!-- ======================= Sidebar ======================= -->
+    <aside class="sidebar">
+      <div class="brand">
+        <svg class="mark" viewBox="0 0 40 40" aria-hidden="true">
+          <rect x="4" y="4" width="14" height="14" rx="4.5" class="m-off"/><rect x="22" y="4" width="14" height="14" rx="4.5" class="m-on"/>
+          <rect x="4" y="22" width="14" height="14" rx="4.5" class="m-off"/><rect x="22" y="22" width="14" height="14" rx="4.5" class="m-off"/>
+        </svg>
+        <div class="brand-text"><strong>Course Enrollment</strong><span>Management System</span></div>
       </div>
-      <div class="table-wrap"><table id="tbl-students" class="grid"><thead></thead><tbody></tbody></table></div>
-    </section>
 
-    <!-- ================= Courses ================= -->
-    <section class="panel" role="tabpanel" id="panel-courses" aria-labelledby="tab-courses" hidden>
-      <div class="toolbar">
-        <label class="search"><span>Search</span>
-          <input id="crs-search" type="search" placeholder="Type to filter by ID or name&hellip;" autocomplete="off">
-        </label>
-        <div class="legend" aria-hidden="true">
-          <span class="chip open">Open</span><span class="chip almost">Almost full (&ge; 80%)</span><span class="chip full">Full</span>
+      <nav class="nav" role="tablist" aria-orientation="vertical" aria-label="Sections">
+        <button class="nav-item" role="tab" id="tab-students" aria-controls="panel-students" aria-selected="true">
+          <svg class="i" aria-hidden="true"><use href="#i-students"/></svg><span class="label">Students</span><span class="count" id="nav-students">0</span>
+        </button>
+        <button class="nav-item" role="tab" id="tab-courses" aria-controls="panel-courses" aria-selected="false" tabindex="-1">
+          <svg class="i" aria-hidden="true"><use href="#i-courses"/></svg><span class="label">Courses</span><span class="count" id="nav-courses">0</span>
+        </button>
+        <button class="nav-item" role="tab" id="tab-enrollment" aria-controls="panel-enrollment" aria-selected="false" tabindex="-1">
+          <svg class="i" aria-hidden="true"><use href="#i-enrollment"/></svg><span class="label">Enrollment</span><span class="count" id="nav-enrollments">0</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-foot">
+        <div class="usage" aria-live="polite">
+          <span class="usage-text" id="usage-text"></span>
+          <span class="usage-bar"><i id="usage-bar"></i></span>
         </div>
-        <button id="crs-add" class="btn primary">Add Course&hellip;</button>
-      </div>
-      <div class="table-wrap"><table id="tbl-courses" class="grid"><thead></thead><tbody></tbody></table></div>
-    </section>
 
-    <!-- ================= Enrollment ================= -->
-    <section class="panel" role="tabpanel" id="panel-enrollment" aria-labelledby="tab-enrollment" hidden>
-      <div class="split">
-        <fieldset class="card">
-          <legend>By Student</legend>
-          <label class="field"><span>Student</span>
-            <select id="enr-student"></select>
-          </label>
-          <div class="table-wrap grow"><table id="tbl-student-courses" class="grid selectable"><thead></thead><tbody></tbody></table></div>
-          <label class="field"><span>Course</span>
-            <select id="enr-course"></select>
-          </label>
-          <div class="button-row">
-            <button id="btn-enroll" class="btn primary" disabled>Enroll</button>
-            <button id="btn-withdraw" class="btn danger" disabled>Withdraw Selected</button>
+        <details class="data" id="datamenu" open>
+          <summary>Data and files</summary>
+          <p id="unsaved" class="unsaved" hidden><span class="dot" aria-hidden="true"></span>You have unsaved changes</p>
+          <button id="btn-save" class="btn save" title="Save to this browser (Ctrl+S)">
+            <svg class="i" aria-hidden="true"><use href="#i-save"/></svg>Save changes<kbd>Ctrl S</kbd>
+          </button>
+          <div class="data-links">
+            <button id="btn-import" class="btn ghost" title="Load students.txt, courses.txt and enrollments.txt"><svg class="i" aria-hidden="true"><use href="#i-upload"/></svg>Import files&hellip;</button>
+            <button id="btn-export" class="btn ghost" title="Download students.txt, courses.txt and enrollments.txt"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg>Export files</button>
+            <button id="btn-sample" class="btn ghost" title="Replace all data with the demo data"><svg class="i" aria-hidden="true"><use href="#i-sample"/></svg>Load sample data</button>
+            <button id="btn-about" class="btn ghost" title="About this app"><svg class="i" aria-hidden="true"><use href="#i-info"/></svg>About</button>
           </div>
-        </fieldset>
-
-        <fieldset class="card">
-          <legend>By Course</legend>
-          <label class="field"><span>Course</span>
-            <select id="enr-view-course"></select>
-          </label>
-          <p id="enr-summary" class="summary" aria-live="polite">Select a course to see its enrolled students.</p>
-          <div id="enr-bar" class="bar" role="progressbar" aria-label="How full the course is" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="fill"></div></div>
-          <div class="table-wrap grow"><table id="tbl-course-students" class="grid"><thead></thead><tbody></tbody></table></div>
-        </fieldset>
+          <input id="file-input" type="file" accept=".txt,text/plain" multiple hidden>
+        </details>
       </div>
-    </section>
-  </main>
+    </aside>
 
-  <footer class="statusbar" role="status" aria-live="polite">
-    <span id="st-students"></span>
-    <span id="st-courses"></span>
-    <span id="st-enrollments"></span>
-    <span id="st-last" class="last"></span>
-  </footer>
+    <!-- ======================= Content ======================= -->
+    <div class="content">
+      <main>
+        <!-- ---------- Students ---------- -->
+        <section class="panel" role="tabpanel" id="panel-students" aria-labelledby="tab-students">
+          <header class="page-head">
+            <div>
+              <h1>Students</h1>
+              <p>Everyone registered, and the courses each person is taking.</p>
+            </div>
+            <button id="stu-add" class="btn primary"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg>Add student</button>
+          </header>
+          <div class="surface">
+            <div class="toolbar">
+              <label class="search">
+                <svg class="i" aria-hidden="true"><use href="#i-search"/></svg>
+                <input id="stu-search" type="search" placeholder="Search by ID or name" aria-label="Search students" autocomplete="off">
+              </label>
+              <span class="result-count" id="stu-count" aria-live="polite"></span>
+            </div>
+            <div class="table-wrap"><table id="tbl-students" class="grid"><thead></thead><tbody></tbody></table></div>
+          </div>
+        </section>
 
-  <!-- ================= Dialogs ================= -->
+        <!-- ---------- Courses ---------- -->
+        <section class="panel" role="tabpanel" id="panel-courses" aria-labelledby="tab-courses" hidden>
+          <header class="page-head">
+            <div>
+              <h1>Courses</h1>
+              <p>Capacity, enrolled students and remaining places for every course.</p>
+            </div>
+            <button id="crs-add" class="btn primary"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg>Add course</button>
+          </header>
+          <div class="surface">
+            <div class="toolbar">
+              <label class="search">
+                <svg class="i" aria-hidden="true"><use href="#i-search"/></svg>
+                <input id="crs-search" type="search" placeholder="Search by ID or name" aria-label="Search courses" autocomplete="off">
+              </label>
+              <div class="seg" id="crs-filter" role="group" aria-label="Filter by status"></div>
+              <span class="result-count" id="crs-count" aria-live="polite"></span>
+            </div>
+            <div class="table-wrap"><table id="tbl-courses" class="grid"><thead></thead><tbody></tbody></table></div>
+          </div>
+        </section>
+
+        <!-- ---------- Enrollment ---------- -->
+        <section class="panel" role="tabpanel" id="panel-enrollment" aria-labelledby="tab-enrollment" hidden>
+          <header class="page-head">
+            <div>
+              <h1>Enrollment</h1>
+              <p>Enroll or withdraw a student, or look at who is sitting in a course.</p>
+            </div>
+          </header>
+          <div class="split">
+            <section class="surface pane" aria-labelledby="by-student-title">
+              <div class="pane-head">
+                <h2 id="by-student-title">By student</h2>
+                <p>Choose a student to see and change their courses.</p>
+              </div>
+              <label class="field stack"><span>Student</span><select id="enr-student"></select></label>
+              <div id="student-card" class="person-card" hidden></div>
+              <div class="subhead">
+                <span>Courses taken</span>
+                <button id="btn-withdraw" class="btn danger small" disabled>Withdraw selected</button>
+              </div>
+              <div class="table-wrap grow"><table id="tbl-student-courses" class="grid selectable"><thead></thead><tbody></tbody></table></div>
+              <div class="enroll-row">
+                <label class="field stack grow"><span>Enroll in</span><select id="enr-course"></select></label>
+                <button id="btn-enroll" class="btn primary" disabled>Enroll</button>
+              </div>
+            </section>
+
+            <section class="surface pane" aria-labelledby="by-course-title">
+              <div class="pane-head">
+                <h2 id="by-course-title">By course</h2>
+                <p>Choose a course to see its seats and who is enrolled.</p>
+              </div>
+              <label class="field stack"><span>Course</span><select id="enr-view-course"></select></label>
+              <div id="course-head" class="course-head" hidden></div>
+              <p id="enr-summary" class="summary" aria-live="polite">Select a course to see its enrolled students.</p>
+              <div id="enr-bar" class="meter" role="progressbar" aria-label="How full the course is" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden><i></i></div>
+              <div id="seatmap" class="seatmap" role="img" hidden></div>
+              <div id="seat-legend" class="seat-legend" hidden><span><i class="swatch on"></i>Taken</span><span><i class="swatch off"></i>Open</span></div>
+              <div class="table-wrap grow"><table id="tbl-course-students" class="grid"><thead></thead><tbody></tbody></table></div>
+            </section>
+          </div>
+        </section>
+      </main>
+
+      <footer class="statusbar" role="status" aria-live="polite">
+        <span id="st-students"></span>
+        <span id="st-courses"></span>
+        <span id="st-enrollments"></span>
+        <span id="st-last" class="last" data-kind="info"></span>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ======================= Dialogs ======================= -->
   <dialog id="dlg-student" aria-labelledby="dlg-student-title">
     <form id="form-student" novalidate>
-      <h2 id="dlg-student-title">Add Student</h2>
-      <label class="field stack"><span>Student ID</span><input id="stu-id" name="id" autocomplete="off" spellcheck="false"></label>
-      <label class="field stack"><span>Name</span><input id="stu-name" name="name" autocomplete="off"></label>
+      <h2 id="dlg-student-title">Add student</h2>
+      <p class="dlg-sub">Each student needs a unique ID.</p>
+      <label class="field stack"><span>Student ID</span><input id="stu-id" name="id" autocomplete="off" spellcheck="false" placeholder="S008"><small>No spaces and no | character.</small></label>
+      <label class="field stack"><span>Full name</span><input id="stu-name" name="name" autocomplete="off" placeholder="Maria Garcia"><small>The | character is not allowed.</small></label>
       <p class="form-error" id="stu-error" role="alert"></p>
       <div class="dialog-actions">
         <button type="button" class="btn" data-cancel>Cancel</button>
-        <button type="submit" class="btn primary">OK</button>
+        <button type="submit" class="btn primary">Add student</button>
       </div>
     </form>
   </dialog>
 
   <dialog id="dlg-course" aria-labelledby="dlg-course-title">
     <form id="form-course" novalidate>
-      <h2 id="dlg-course-title">Add Course</h2>
-      <label class="field stack"><span>Course ID</span><input id="crs-id" name="id" autocomplete="off" spellcheck="false"></label>
-      <label class="field stack"><span>Name</span><input id="crs-name" name="name" autocomplete="off"></label>
-      <label class="field stack"><span>Capacity</span><input id="crs-cap" name="capacity" type="number" min="1" max="100000" step="1" inputmode="numeric" value="30"></label>
+      <h2 id="dlg-course-title">Add course</h2>
+      <p class="dlg-sub">Set how many students can enroll.</p>
+      <label class="field stack"><span>Course ID</span><input id="crs-id" name="id" autocomplete="off" spellcheck="false" placeholder="PH101"><small>No spaces and no | character.</small></label>
+      <label class="field stack"><span>Course name</span><input id="crs-name" name="name" autocomplete="off" placeholder="Physics for Engineers"><small>The | character is not allowed.</small></label>
+      <div class="field stack">
+        <label for="crs-cap" class="lbl">Capacity</label>
+        <div class="stepper">
+          <button type="button" data-step="-1" aria-label="One seat fewer"><svg class="i" aria-hidden="true"><use href="#i-minus"/></svg></button>
+          <input id="crs-cap" name="capacity" type="number" min="1" max="100000" step="1" inputmode="numeric" value="30">
+          <button type="button" data-step="1" aria-label="One seat more"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg></button>
+        </div>
+        <small>A whole number from 1 to 100,000.</small>
+      </div>
       <p class="form-error" id="crs-error" role="alert"></p>
       <div class="dialog-actions">
         <button type="button" class="btn" data-cancel>Cancel</button>
-        <button type="submit" class="btn primary">OK</button>
+        <button type="submit" class="btn primary">Add course</button>
       </div>
     </form>
   </dialog>
 
   <dialog id="dlg-message" aria-labelledby="msg-title">
     <form method="dialog" id="form-message">
-      <h2 id="msg-title"></h2>
-      <p id="msg-text" class="msg-text"></p>
+      <div class="msg">
+        <span class="msg-icon" id="msg-icon" aria-hidden="true"></span>
+        <div class="msg-body">
+          <h2 id="msg-title"></h2>
+          <p id="msg-text" class="msg-text"></p>
+        </div>
+      </div>
       <div class="dialog-actions" id="msg-buttons"></div>
     </form>
   </dialog>
@@ -134,10 +232,10 @@
   <dialog id="dlg-about" aria-labelledby="about-title">
     <form method="dialog">
       <h2 id="about-title">Course Enrollment Management System</h2>
-      <p>Version 1.0 &mdash; browser edition of the Win32 desktop project.</p>
-      <p class="muted">Data is kept in this browser (press <b>Save</b>). Use <b>Export files</b> / <b>Import files</b> to exchange
+      <p class="dlg-sub">Version 1.0. The browser edition of the Win32 desktop project.</p>
+      <p class="about-text">Data is kept in this browser. Press <b>Save changes</b> to keep it. Use <b>Export files</b> and <b>Import files</b> to exchange
         <code>students.txt</code>, <code>courses.txt</code> and <code>enrollments.txt</code> with the desktop version.</p>
-      <div class="dialog-actions"><button class="btn primary" autofocus>OK</button></div>
+      <div class="dialog-actions"><button class="btn primary" autofocus>Close</button></div>
     </form>
   </dialog>
 
