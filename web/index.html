@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Course Enrollment Management System</title>
+  <meta name="description" content="Manage students, courses and enrollments: capacity limits, duplicate checks, search, sorting and file import/export.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23285fc9'/%3E%3Ctext x='32' y='46' font-family='Segoe UI,Arial' font-size='40' font-weight='700' text-anchor='middle' fill='white'%3EE%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="appbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">E</span>
+      <h1>Course Enrollment Management System</h1>
+      <span id="unsaved" class="badge" hidden>Unsaved changes</span>
+    </div>
+    <div class="actions">
+      <button id="btn-save" class="btn primary" title="Save to this browser (Ctrl+S)">Save <kbd>Ctrl+S</kbd></button>
+      <button id="btn-import" class="btn" title="Load students.txt, courses.txt and enrollments.txt">Import files&hellip;</button>
+      <button id="btn-export" class="btn" title="Download students.txt, courses.txt and enrollments.txt">Export files</button>
+      <button id="btn-sample" class="btn" title="Replace all data with the demo data">Sample data</button>
+      <button id="btn-about" class="btn" title="About">About</button>
+      <input id="file-input" type="file" accept=".txt,text/plain" multiple hidden>
+    </div>
+  </header>
+
+  <main>
+    <div class="tabs" role="tablist" aria-label="Sections">
+      <button class="tab" role="tab" id="tab-students" aria-controls="panel-students" aria-selected="true">Students</button>
+      <button class="tab" role="tab" id="tab-courses" aria-controls="panel-courses" aria-selected="false" tabindex="-1">Courses</button>
+      <button class="tab" role="tab" id="tab-enrollment" aria-controls="panel-enrollment" aria-selected="false" tabindex="-1">Enrollment</button>
+    </div>
+
+    <!-- ================= Students ================= -->
+    <section class="panel" role="tabpanel" id="panel-students" aria-labelledby="tab-students">
+      <div class="toolbar">
+        <label class="search"><span>Search</span>
+          <input id="stu-search" type="search" placeholder="Type to filter by ID or name&hellip;" autocomplete="off">
+        </label>
+        <button id="stu-add" class="btn primary">Add Student&hellip;</button>
+      </div>
+      <div class="table-wrap"><table id="tbl-students" class="grid"><thead></thead><tbody></tbody></table></div>
+    </section>
+
+    <!-- ================= Courses ================= -->
+    <section class="panel" role="tabpanel" id="panel-courses" aria-labelledby="tab-courses" hidden>
+      <div class="toolbar">
+        <label class="search"><span>Search</span>
+          <input id="crs-search" type="search" placeholder="Type to filter by ID or name&hellip;" autocomplete="off">
+        </label>
+        <div class="legend" aria-hidden="true">
+          <span class="chip open">Open</span><span class="chip almost">Almost full (&ge; 80%)</span><span class="chip full">Full</span>
+        </div>
+        <button id="crs-add" class="btn primary">Add Course&hellip;</button>
+      </div>
+      <div class="table-wrap"><table id="tbl-courses" class="grid"><thead></thead><tbody></tbody></table></div>
+    </section>
+
+    <!-- ================= Enrollment ================= -->
+    <section class="panel" role="tabpanel" id="panel-enrollment" aria-labelledby="tab-enrollment" hidden>
+      <div class="split">
+        <fieldset class="card">
+          <legend>By Student</legend>
+          <label class="field"><span>Student</span>
+            <select id="enr-student"></select>
+          </label>
+          <div class="table-wrap grow"><table id="tbl-student-courses" class="grid selectable"><thead></thead><tbody></tbody></table></div>
+          <label class="field"><span>Course</span>
+            <select id="enr-course"></select>
+          </label>
+          <div class="button-row">
+            <button id="btn-enroll" class="btn primary" disabled>Enroll</button>
+            <button id="btn-withdraw" class="btn danger" disabled>Withdraw Selected</button>
+          </div>
+        </fieldset>
+
+        <fieldset class="card">
+          <legend>By Course</legend>
+          <label class="field"><span>Course</span>
+            <select id="enr-view-course"></select>
+          </label>
+          <p id="enr-summary" class="summary" aria-live="polite">Select a course to see its enrolled students.</p>
+          <div id="enr-bar" class="bar" role="progressbar" aria-label="How full the course is" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="fill"></div></div>
+          <div class="table-wrap grow"><table id="tbl-course-students" class="grid"><thead></thead><tbody></tbody></table></div>
+        </fieldset>
+      </div>
+    </section>
+  </main>
+
+  <footer class="statusbar" role="status" aria-live="polite">
+    <span id="st-students"></span>
+    <span id="st-courses"></span>
+    <span id="st-enrollments"></span>
+    <span id="st-last" class="last"></span>
+  </footer>
+
+  <!-- ================= Dialogs ================= -->
+  <dialog id="dlg-student" aria-labelledby="dlg-student-title">
+    <form id="form-student" novalidate>
+      <h2 id="dlg-student-title">Add Student</h2>
+      <label class="field stack"><span>Student ID</span><input id="stu-id" name="id" autocomplete="off" spellcheck="false"></label>
+      <label class="field stack"><span>Name</span><input id="stu-name" name="name" autocomplete="off"></label>
+      <p class="form-error" id="stu-error" role="alert"></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn" data-cancel>Cancel</button>
+        <button type="submit" class="btn primary">OK</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-course" aria-labelledby="dlg-course-title">
+    <form id="form-course" novalidate>
+      <h2 id="dlg-course-title">Add Course</h2>
+      <label class="field stack"><span>Course ID</span><input id="crs-id" name="id" autocomplete="off" spellcheck="false"></label>
+      <label class="field stack"><span>Name</span><input id="crs-name" name="name" autocomplete="off"></label>
+      <label class="field stack"><span>Capacity</span><input id="crs-cap" name="capacity" type="number" min="1" max="100000" step="1" inputmode="numeric" value="30"></label>
+      <p class="form-error" id="crs-error" role="alert"></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn" data-cancel>Cancel</button>
+        <button type="submit" class="btn primary">OK</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-message" aria-labelledby="msg-title">
+    <form method="dialog" id="form-message">
+      <h2 id="msg-title"></h2>
+      <p id="msg-text" class="msg-text"></p>
+      <div class="dialog-actions" id="msg-buttons"></div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-about" aria-labelledby="about-title">
+    <form method="dialog">
+      <h2 id="about-title">Course Enrollment Management System</h2>
+      <p>Version 1.0 &mdash; browser edition of the Win32 desktop project.</p>
+      <p class="muted">Data is kept in this browser (press <b>Save</b>). Use <b>Export files</b> / <b>Import files</b> to exchange
+        <code>students.txt</code>, <code>courses.txt</code> and <code>enrollments.txt</code> with the desktop version.</p>
+      <div class="dialog-actions"><button class="btn primary" autofocus>OK</button></div>
+    </form>
+  </dialog>
+
+  <script src="logic.js"></script>
+  <script src="storage.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

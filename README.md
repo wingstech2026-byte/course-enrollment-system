@@ -147,3 +147,29 @@ Switch to the **Enrollment** tab. *Expected at first:* **Enroll** and **Withdraw
 - [ ] **G1** **Help > About** opens a small dialog; OK / Esc closes it.
 - [ ] **G2** DPI: move the window between monitors of different scaling, or change Windows scaling to 150 %. *Expected:* text and controls stay sharp and proportionally sized (Segoe UI 9 pt scaled).
 - [ ] **G3** Status bar format: `Students: N | Courses: N | Enrollments: N | last action` (four panes). Errors show a message box; successes only update the status bar.
+
+## 6. Browser edition (`web/`) and Vercel
+
+The `web/` folder is a browser version of the same system (plain HTML, CSS and JavaScript, no build step).
+It uses the same rules, messages, sample data and file formats as the desktop program.
+
+| File | Purpose |
+|---|---|
+| `web/logic.js` | Business rules (port of `EnrollmentSystem.cpp`) |
+| `web/storage.js` | `students.txt` / `courses.txt` / `enrollments.txt` parsing and saving, sample data |
+| `web/app.js`, `web/index.html`, `web/styles.css` | User interface |
+| `web/tests/logic.test.js` | 13 automated tests: `node --test web/tests/logic.test.js` |
+
+Differences from the desktop version: data is saved in the browser (**Save** / Ctrl+S, `localStorage`) instead of next to the `.exe`;
+**Export files** / **Import files...** exchange the three `.txt` files with the desktop program; closing a page with unsaved changes shows
+the browser's standard "leave site?" prompt (browsers do not allow a Yes/No/Cancel box).
+
+Run locally: `cd web` then `npx serve` (or `python -m http.server 8000`) and open the address shown.
+
+### Deploy to Vercel
+1. Push this repository to GitHub.
+2. On https://vercel.com choose **Add New > Project**, import the repository, and click **Deploy**
+   (the supplied `vercel.json` already points Vercel at the `web` folder; no build command is needed).
+3. Vercel gives you a `https://<name>.vercel.app` link.
+
+Or from a terminal: `npm i -g vercel`, then `cd web` and run `vercel --prod`.

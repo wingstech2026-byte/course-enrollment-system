@@ -18,3 +18,7 @@ Release/
 # MSBuild intermediate folder and release archives
 Enrollme.*/
 *.zip
+
+# Browser-test artifacts
+.playwright-mcp/
+web-*.png
